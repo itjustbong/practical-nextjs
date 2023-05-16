@@ -215,3 +215,272 @@ export async function getStaticProps() {
   - 빌드시
   - 10분 이후, 새로운 요청이 들어온 시점 (해당 요청에 대해서는 기존의 static 파일 전달)
   - Next는 ISR을 최대한 지연시켜서 처리함, 10분후에 요청이 없다면 먼저 재생성하지는 않음.
+
+# 📌 Nextjs 기초와 내장 컴포넌트
+
+**동적 웹 사이트 개발**
+
+- 라우팅 시스템, 클라이언트 네비게이션, 이미지 최적화, 메타데이터 처리
+- \_app.js, \_document.js
+
+### **라우터**
+
+- 기존의 리액트에서 활용하던 라우터 라이브러리 들은 클라이언트 환경에서만 활용 가능.
+- Nextjs에서는 **파일시스템 기반 페이지와 라우팅**을 제공함
+
+**사용예시 @페이지**
+
+```jsx
+// pages/greet/[name].js
+
+export async function getServerSideProps({ params }) {
+  const { name } = params;
+  return {
+    props: { name },
+  };
+}
+```
+
+**사용예시 @컴포넌트**
+
+```jsx
+import { useRouter } from 'next/router';
+
+function Greet() {
+  const { query } = useRouter();
+  return <>{query.name}</>;
+}
+```
+
+### 클라이언트 내비게이션: Link
+
+- NextJS는 기본적으로 현재 화면에 표시되는 페이지의 모든 Link에 대해 연결된 부분 또는 페이지를 **미리 읽어옴!** → 확인해보기
+
+```jsx
+<Link href="/naver" preload={false}></Link> // 미리 불러오지 않음.
+```
+
+- router.push VS Link
+  - router.push 는 Link처럼 연결된 페이지를 미리 불러오지 못함.
+
+### 정적 자원 제공
+
+- /public 디렉토리 안에 있는 모든 파일은 Next가 정적 자원으로 간주하고 제공함.
+- 최적화 되지 않은 이미지를 제공하는 것은 UX에 나쁜 영향을 줌
+  - 누적 레이아웃 이동(CLS) → 레이아웃 변경
+- 자동 이미지 최적화
+  - 클라이언트가 이미지를 요구할 때, 최적화를 진행함.
+  - 화면 크기별로 이미지를 조절할 수 있음 → srcset 활용 → 외부 이미지일 경우 next.config 파일의 images.domains에 호스트명을 추가해야 함.
+  - 클라이언트가 요청한 사이즈에 맞도록 이미지 파일 제공
+  - 지원되는 브라우저에서는 자동으로 Webp 이미지 파일 변환 및 제공
+
+**외부 서비스를 통한 자동 이미지 최적화**
+
+- 기본으로 실행되고 있는 서버에서 자동으로 이미지를 최적화 함 → **서버 부하**
+- 만약, 서버의 성능이 낮다면 → 외부 서비스를 통해 자동 이미지 최적화 위임
+
+```jsx
+// next.config.js
+module.exports = {
+	images: {
+		loader: 'akamai', // 기본으로는 Vercel, 다른 외부 서비스도 있음
+		domains: ['images.unsplash.com']
+	}
+}
+
+// CustomImage
+const loader = ({src, width, quality}) => {
+	// loader에 다른 서비스를 붙이기 위해서는 해당 서비스들의 API를 참고할 것.
+	return `https://test.com/${src}?w=${width}&q=${quality}`
+}
+
+function CustomImage(){
+	return (
+		<Image
+			loader={loader}
+			src="/myimage.jpg"
+			// ~
+		>
+	)
+}
+```
+
+### 메타데이터
+
+- 페이스북에서는 OG라는 프로토콜을 통해 어떤 데이터를 카드에 표시할지 파악함.
+- 메타 데이터가 있어야 SEO최적화 좋음
+
+**중복된 메타데이터**
+
+- 한 페이지에서 다수의 컴포넌트가 Head 정보를 변경하고자 한다면, 다음과 같이 할 수 있음
+  - 원래는 title이 여러개가 생성되지만, key값이 있으면 변경이 됨.
+
+```jsx
+<title key="htmlTitle">타이틀 고유 값</title>
+```
+
+### 공통 메타 태그 그룹
+
+```jsx
+import Head from 'next/head';
+
+function PostMeta(props) {
+  return (
+    <Head>
+      <title> {props.title} </title>
+      <meta name="description" content={props.subtitle} />
+
+      <meta property="og:title" content={props.title} />
+      <meta property="og:description" content={props.subtitle} />
+      <meta property="og:image" content={props.image} />
+
+      <meta name="twitter:card" content="summary" />
+      <meta name="twitter:title" content={props.title} />
+      <meta name="twitter:description" content={props.description} />
+      <meta name="twitter:image" content={props.image} />
+    </Head>
+  );
+}
+
+export default PostMeta;
+
+// 컴포넌트
+<PostMeta {...post}>
+```
+
+# \_app와 \_document
+
+- 페이지 초기화 과정에 작업이 필요한 경우
+- 페이지를 렌더링할 때마다 렌더링한 HTML을 클라이언트에 보내기 전에 특정 작업을 해야하는 경우
+- getServerSideProps나 getStaticProps와 같은 함수를 사용해서 데이터를 불러오는 용도로 사용할 수 없음 → getInitialProps를 활용할 수 있으나 해당 함수 사용시, Next가 모든 페이지를 서버에서 렌더링 → 동적 페이지에 대한 정적 최적화를 진행하지 않음.
+- 주된 사용목적은 페이지 이동시, 서로 다른 페이지 간 상태 유지(테마, 장바구니 등), 전역 스타일 추가, 페이지 레이아웃 관리, 페이지 속성에 데이터 추가 하는 것이 목적
+- HTML 태그 등의 커스텀은 불가 → \_document에서 작업
+
+**\_app**
+
+```jsx
+function MyApp({ Component, pageProps }) {
+  // 페이지 컴포넌트와 그 페이지로 가는 props를 반환함.
+  return <Component {...pageProps} />;
+}
+```
+
+- 테마 세팅 with **Context**
+
+```jsx
+// components/themeContext.js
+import { createContext } from 'react';
+
+const ThemeContext = createContext({
+  theme: 'light',
+  toggleTheme: () => null,
+});
+
+export default ThemeContext;
+```
+
+```jsx
+// _app.js
+import { useState } from 'react';
+import ThemeContext from '../components/themeContext';
+import Navbar from '../components/Navbar';
+
+const themes = {
+  dark: {
+    background: 'black',
+    color: 'white',
+  },
+  light: {
+    background: 'white',
+    color: 'black',
+  },
+};
+
+function MyApp({ Component, pageProps }) {
+  const [theme, setTheme] = useState('light');
+
+  const toggleTheme = () => {
+    setTheme(theme === 'dark' ? 'light' : 'dark');
+  };
+
+  return (
+    <ThemeContext.Provider value={{ theme, toggleTheme }}>
+      <div
+        style={{
+          width: '100%',
+          minHeight: '100vh',
+          ...themes[theme],
+        }}
+      >
+        <Navbar />
+        <Component {...pageProps} />
+      </div>
+    </ThemeContext.Provider>
+  );
+}
+
+export default MyApp;
+```
+
+```jsx
+// Navbar.js
+import { useContext } from 'react';
+import Link from 'next/link';
+import themeContext from './themeContext';
+
+function Navbar() {
+  const { toggleTheme, theme } = useContext(themeContext);
+  const newThemeName = theme === 'dark' ? 'light' : 'dark';
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginBottom: 25,
+      }}
+    >
+      <div>My Website</div>
+      <div>
+        <Link href="/">Home </Link>
+        <Link href="/about">About </Link>
+        <Link href="/contacts">Contacts </Link>
+        <button onClick={toggleTheme}>Set {newThemeName} theme</button>
+      </div>
+    </div>
+  );
+}
+
+export default Navbar;
+```
+
+**\_document**
+
+- <head><html><body> 와 같은 기본적인 HTML태그를 정의할 필요 X
+
+```jsx
+import Document, { Html, Head, Main, NextScript } from 'next/document';
+
+class MyDocument extends Document {
+  // 하기 함수 호출시, 동적 페이지에 대한 최적화 불가.
+  static async getInitialProps(ctx) {
+    const initialProps = await Document.getInitialProps(ctx);
+    return { ...initialProps };
+  }
+
+  // 하기 주요 4대 컴포넌트는 항상 있어야 해.
+  render() {
+    return (
+      <Html>
+        <Head />
+        <body>
+          <Main />
+          <NextScript />
+        </body>
+      </Html>
+    );
+  }
+}
+
+export default MyDocument;
+```
